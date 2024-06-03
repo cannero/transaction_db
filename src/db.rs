@@ -37,7 +37,7 @@ impl Database {
         }
     }
 
-    fn in_progress(&self) -> BTreeSet<u64> {
+    pub fn in_progress(&self) -> BTreeSet<u64> {
         let mut result = BTreeSet::new();
         for (id, transaction) in &self.transactions{
             if transaction.state == TransactionState::InProgress {

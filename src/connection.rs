@@ -1,12 +1,46 @@
-use std::rc::Rc;
+use std::{cell::{RefCell, RefMut}, rc::Rc};
 
-use crate::db::Database;
+use crate::{db::Database, types::TransactionState};
 
 
-struct Connection{
+pub struct Connection{
     transaction_id: Option<u64>,
-    db: Rc<Database>,
+    db: Rc<RefCell<Database>>,
 }
 
 impl Connection {
+    pub fn new(db: Rc<RefCell<Database>>) -> Self {
+        Self {
+            db,
+            transaction_id: None,
+        }
+    }
+    
+    pub fn exec_command(&mut self, command: &str, args: &[&str]) -> Result<String, String> {
+        match command {
+            "begin" => {
+                assert!(self.transaction_id.is_none(), "transaction already open");
+                //let mut db = self.db.borrow_mut();
+                let new_id = self.get_db().new_transaction();
+                self.transaction_id = Some(new_id);
+                Ok(format!("transaction {}", new_id))
+            }
+            "abort" => {
+                //let mut db = self.get_db();
+                self.get_db().complete(self.transaction_id.unwrap(), TransactionState::Aborted);
+                self.transaction_id = None;
+                Ok("aborted".to_string())
+            }
+            _ => Err(format!("unknown command `{}`", command))
+        }
+        
+    }
+
+    pub fn must_exec_command(&mut self, command: &str, args: &[&str]) -> String {
+        self.exec_command(command, args).expect("command not possible")
+    }
+
+    fn get_db(&self) -> RefMut<Database> {
+        self.db.borrow_mut()
+    }
 }
