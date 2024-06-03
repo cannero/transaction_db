@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 pub enum TransactionState {
     InProgress,
     Aborted,
-    Commited,
+    Committed,
 }
 
 #[derive(Clone, PartialEq)]
@@ -18,12 +18,22 @@ pub enum IsolationLevel {
 
 pub struct Value {
     tx_start_id: u64,
-    tx_end_id: u64,
-    value: String,
+    pub tx_end_id: u64,
+    pub value: String,
+}
+
+impl Value {
+    pub fn new(tx_start_id: u64, value: String) -> Self {
+        Self {
+            tx_start_id,
+            tx_end_id: 0,
+            value,
+        }
+    }
 }
 
 pub struct Transaction {
-    isolation_level: IsolationLevel,
+    pub isolation_level: IsolationLevel,
     pub id: u64,
     pub state: TransactionState,
 
@@ -48,5 +58,13 @@ impl Transaction {
     
     pub fn set_state(&mut self, state: TransactionState) {
         self.state = state;
+    }
+
+    pub fn readset_insert(&mut self, key: String) {
+        self.readset.insert(key);
+    }
+
+    pub fn writeset_insert(&mut self, key: String) {
+        self.writeset.insert(key);
     }
 }
