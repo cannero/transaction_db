@@ -2,13 +2,20 @@ use std::{cell::RefCell, rc::Rc};
 
 use connection::Connection;
 use db::Database;
+use types::IsolationLevel;
 
 mod connection;
 mod db;
 mod types;
 
-fn create_db() -> Rc<RefCell<Database>> {
-    Rc::new(RefCell::new(Database::new(types::IsolationLevel::ReadUncommitted)))
+fn create_db_uncomitted() -> Rc<RefCell<Database>> {
+    create_db(IsolationLevel::ReadUncommitted)
+}
+
+fn create_db(level: IsolationLevel) -> Rc<RefCell<Database>> {
+    Rc::new(RefCell::new(Database::new(
+        level,
+    )))
 }
 
 fn create_con(db: &Rc<RefCell<Database>>) -> Connection {
@@ -16,7 +23,7 @@ fn create_con(db: &Rc<RefCell<Database>>) -> Connection {
 }
 
 fn main() {
-    let db = create_db();
+    let db = create_db_uncomitted();
     let mut conn1 = create_con(&db);
     let mut conn2 = create_con(&db);
 
@@ -24,7 +31,7 @@ fn main() {
     println!("{:?}", conn2.exec_command("begin", &vec![]));
 
     println!("in progress {:?}", db.borrow().in_progress());
-    
+
     println!("{:?}", conn1.exec_command("abort", &vec![]));
 
     println!("in progress {:?}", db.borrow().in_progress());
@@ -35,8 +42,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_read_uncommited() {
-        let db = create_db();
+    fn test_read_uncommitted() {
+        let db = create_db_uncomitted();
         let mut con1 = create_con(&db);
         let mut con2 = create_con(&db);
 
@@ -52,5 +59,44 @@ mod tests {
 
         assert!(con1.exec_command("get", &vec!["x"]).is_err());
         assert!(con2.exec_command("get", &vec!["x"]).is_err());
+    }
+
+    #[test]
+    fn test_read_committed() {
+        let db = create_db(IsolationLevel::ReadCommitted);
+        let mut con1 = create_con(&db);
+        let mut con2 = create_con(&db);
+
+        con1.must_exec_command("begin", &vec![]);
+        con2.must_exec_command("begin", &vec![]);
+
+        con1.must_exec_command("set", &vec!["x", "hey"]);
+
+        assert_eq!(&con1.must_exec_command("get", &vec!["x"]), "hey");
+        assert!(con2.exec_command("get", &vec!["x"]).is_err());
+
+        con1.must_exec_command("commit", &vec![]);
+        
+        assert_eq!(&con2.must_exec_command("get", &vec!["x"]), "hey");
+
+        let mut con3 = create_con(&db);
+        con3.must_exec_command("begin", &vec![]);
+        con3.must_exec_command("set", &vec!["x", "other value"]);
+
+        assert_eq!(&con3.must_exec_command("get", &vec!["x"]), "other value");
+        assert_eq!(&con2.must_exec_command("get", &vec!["x"]), "hey");
+
+        con3.must_exec_command("abort", &vec![]);
+
+        assert_eq!(&con2.must_exec_command("get", &vec!["x"]), "hey");
+
+        con2.must_exec_command("delete", &vec!["x"]);
+        assert!(con2.exec_command("get", &vec!["x"]).is_err());
+
+        con2.must_exec_command("commit", &vec![]);
+
+        let mut con4 = create_con(&db);
+        con4.must_exec_command("begin", &vec![]);
+        assert!(con4.exec_command("get", &vec!["x"]).is_err());
     }
 }

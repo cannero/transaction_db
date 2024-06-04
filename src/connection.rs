@@ -1,9 +1,11 @@
-use std::{cell::{RefCell, RefMut}, rc::Rc};
+use std::{
+    cell::{RefCell, RefMut},
+    rc::Rc,
+};
 
 use crate::{db::Database, types::TransactionState};
 
-
-pub struct Connection{
+pub struct Connection {
     transaction_id: Option<u64>,
     db: Rc<RefCell<Database>>,
 }
@@ -15,7 +17,7 @@ impl Connection {
             transaction_id: None,
         }
     }
-    
+
     pub fn exec_command(&mut self, command: &str, args: &[&str]) -> Result<String, String> {
         match command {
             "begin" => {
@@ -25,12 +27,14 @@ impl Connection {
                 Ok(format!("transaction {}", new_id))
             }
             "abort" => {
-                self.get_db().complete(self.transaction_id.unwrap(), TransactionState::Aborted);
+                self.get_db()
+                    .complete(self.transaction_id.unwrap(), TransactionState::Aborted);
                 self.transaction_id = None;
                 Ok("aborted".to_string())
             }
             "commit" => {
-                self.get_db().complete(self.transaction_id.unwrap(), TransactionState::Committed);
+                self.get_db()
+                    .complete(self.transaction_id.unwrap(), TransactionState::Committed);
                 self.transaction_id = None;
                 Ok("committed".to_string())
             }
@@ -52,13 +56,13 @@ impl Connection {
                 self.get_db().delete(self.transaction_id.unwrap(), key);
                 Ok("value deleted".to_string())
             }
-            _ => Err(format!("unknown command `{}`", command))
+            _ => Err(format!("unknown command `{}`", command)),
         }
-        
     }
 
     pub fn must_exec_command(&mut self, command: &str, args: &[&str]) -> String {
-        self.exec_command(command, args).expect("command not possible")
+        self.exec_command(command, args)
+            .expect("command not possible")
     }
 
     fn get_db(&self) -> RefMut<Database> {

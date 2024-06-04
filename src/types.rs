@@ -17,7 +17,7 @@ pub enum IsolationLevel {
 }
 
 pub struct Value {
-    tx_start_id: u64,
+    pub tx_start_id: u64,
     pub tx_end_id: u64,
     pub value: String,
 }
@@ -32,6 +32,7 @@ impl Value {
     }
 }
 
+#[derive(Clone)]
 pub struct Transaction {
     pub isolation_level: IsolationLevel,
     pub id: u64,
@@ -44,7 +45,6 @@ pub struct Transaction {
 }
 
 impl Transaction {
-
     pub fn new(id: u64, isolation_level: IsolationLevel, in_progress: BTreeSet<u64>) -> Self {
         Self {
             isolation_level,
@@ -55,7 +55,7 @@ impl Transaction {
             readset: BTreeSet::new(),
         }
     }
-    
+
     pub fn set_state(&mut self, state: TransactionState) {
         self.state = state;
     }
