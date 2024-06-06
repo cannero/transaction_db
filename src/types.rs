@@ -38,7 +38,7 @@ pub struct Transaction {
     pub id: u64,
     pub state: TransactionState,
 
-    in_progress: BTreeSet<u64>,
+    pub in_progress: BTreeSet<u64>,
 
     writeset: BTreeSet<String>,
     readset: BTreeSet<String>,

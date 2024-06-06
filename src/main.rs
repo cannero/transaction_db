@@ -22,6 +22,12 @@ fn create_con(db: &Rc<RefCell<Database>>) -> Connection {
     Connection::new(Rc::clone(db))
 }
 
+fn create_open_con(db: &Rc<RefCell<Database>>) -> Connection {
+    let mut con = create_con(&db);
+    con.must_exec_command("begin", &vec![]);
+    con
+}
+
 fn main() {
     let db = create_db_uncomitted();
     let mut conn1 = create_con(&db);
@@ -98,5 +104,42 @@ mod tests {
         let mut con4 = create_con(&db);
         con4.must_exec_command("begin", &vec![]);
         assert!(con4.exec_command("get", &vec!["x"]).is_err());
+    }
+
+    #[test]
+    fn test_read_repeatable() {
+        let db = create_db(IsolationLevel::RepeatableRead);
+        let mut con1 = create_open_con(&db);
+        let mut con2 = create_open_con(&db);
+
+         // Local change is visible locally.
+        con1.must_exec_command("set", &vec!["x", "hey"]);
+        assert_eq!(con1.must_exec_command("get", &vec!["x"]), "hey");
+
+         // Update not available to this transaction since this is not
+        // committed.
+        assert!(con2.exec_command("get", &vec!["x"]).is_err());
+
+        con1.must_exec_command("commit", &vec![]);
+
+        // Not visible in existing transaction
+        assert!(con2.exec_command("get", &vec!["x"]).is_err());
+
+        let mut con3 = create_open_con(&db);
+        assert_eq!(con3.must_exec_command("get", &vec!["x"]), "hey");
+
+        con3.must_exec_command("set", &vec!["x", "yall"]);
+        assert_eq!(con3.must_exec_command("get", &vec!["x"]), "yall");
+
+        assert!(con2.exec_command("get", &vec!["x"]).is_err());
+
+        con3.must_exec_command("abort", &vec![]);
+
+        let mut con4 = create_open_con(&db);
+        con4.must_exec_command("delete", &vec!["x"]);
+        con4.must_exec_command("commit", &vec![]);
+
+        let mut con5 = create_open_con(&db);
+        assert!(con5.exec_command("get", &vec!["x"]).is_err());
     }
 }

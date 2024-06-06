@@ -135,6 +135,40 @@ impl Database {
 
                 return true;
             }
+            IsolationLevel::RepeatableRead => {
+                if value.tx_start_id > transaction.id {
+                    // created after transaction started
+                    return false;
+                }
+
+                if transaction.in_progress.contains(&value.tx_start_id) {
+                    // was in progress when transaction started
+                    return false;
+                }
+
+                if value.tx_start_id != transaction.id
+                    && transactions.get(&value.tx_start_id).unwrap().state
+                        != TransactionState::Committed
+                {
+                    // created by another transaction and not committed
+                    return false;
+                }
+
+                if value.tx_end_id == transaction.id {
+                    // deleted in this transaction
+                    return false;
+                }
+
+                if value.tx_end_id > 0
+                    && value.tx_end_id < transaction.id
+                    && transactions.get(&value.tx_end_id).unwrap().state
+                    == TransactionState::Committed
+                    && !transaction.in_progress.contains(&value.tx_end_id) {
+                        return false;
+                    }
+
+                return true;
+            }
             _ => panic!("isolation level not implemented"),
         }
     }
