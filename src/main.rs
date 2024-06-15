@@ -13,9 +13,7 @@ fn create_db_uncomitted() -> Rc<RefCell<Database>> {
 }
 
 fn create_db(level: IsolationLevel) -> Rc<RefCell<Database>> {
-    Rc::new(RefCell::new(Database::new(
-        level,
-    )))
+    Rc::new(RefCell::new(Database::new(level)))
 }
 
 fn create_con(db: &Rc<RefCell<Database>>) -> Connection {
@@ -82,7 +80,7 @@ mod tests {
         assert!(con2.exec_command("get", &vec!["x"]).is_err());
 
         con1.must_exec_command("commit", &vec![]);
-        
+
         assert_eq!(&con2.must_exec_command("get", &vec!["x"]), "hey");
 
         let mut con3 = create_con(&db);
@@ -112,11 +110,11 @@ mod tests {
         let mut con1 = create_open_con(&db);
         let mut con2 = create_open_con(&db);
 
-         // Local change is visible locally.
+        // Local change is visible locally.
         con1.must_exec_command("set", &vec!["x", "hey"]);
         assert_eq!(con1.must_exec_command("get", &vec!["x"]), "hey");
 
-         // Update not available to this transaction since this is not
+        // Update not available to this transaction since this is not
         // committed.
         assert!(con2.exec_command("get", &vec!["x"]).is_err());
 
@@ -141,5 +139,25 @@ mod tests {
 
         let mut con5 = create_open_con(&db);
         assert!(con5.exec_command("get", &vec!["x"]).is_err());
+    }
+
+    #[test]
+    fn test_snapshot_isolation_writewrite_conflict() {
+        let db = create_db(IsolationLevel::Snapshot);
+        let mut con1 = create_open_con(&db);
+        let mut con2 = create_open_con(&db);
+        let mut con3 = create_open_con(&db);
+
+        con1.must_exec_command("set", &vec!["x", "hey"]);
+        con1.must_exec_command("commit", &vec!["con1"]);
+
+        con2.must_exec_command("set", &vec!["x", "hey"]);
+
+        let res = con2.exec_command("commit", &vec![]);
+        assert_eq!(res, Err("write-write conflict".to_string()));
+
+        // But unrelated keys cause no conflict.
+        con3.must_exec_command("set", &vec!["y", "no conflict"]);
+        con3.must_exec_command("commit", &vec!["con3"]);
     }
 }

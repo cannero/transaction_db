@@ -27,11 +27,22 @@ impl Database {
         id
     }
 
-    pub fn complete(&mut self, transaction_id: u64, state: TransactionState) {
+    pub fn complete(&mut self, transaction_id: u64, state: TransactionState) -> Result<(), String> {
+        let trans2 = self.transactions.clone();
         if let Some(transaction) = self.transactions.get_mut(&transaction_id) {
+            if state == TransactionState::Committed {
+                if transaction.isolation_level == IsolationLevel::Snapshot
+                    && Self::has_conflict(transaction, &trans2, self.next_transaction_id)
+                {
+                    transaction.set_state(TransactionState::Aborted);
+                    return Err("write-write conflict".to_string());
+                }
+            }
+
             transaction.set_state(state);
+            Ok(())
         } else {
-            panic!("transaction {} not found", transaction_id);
+            Err(format!("transaction {} not found", transaction_id))
         }
     }
 
@@ -104,6 +115,39 @@ impl Database {
         }
     }
 
+    fn has_conflict(
+        transaction: &Transaction,
+        transactions: &BTreeMap<u64, Transaction>,
+        next_transaction_id: u64,
+    ) -> bool {
+        for t_in_progress in &transaction.in_progress {
+            let transaction2 = transactions.get(&t_in_progress).unwrap();
+            if transaction2.state == TransactionState::Committed {
+                if transaction.shares_writeset(transaction2) {
+                    println!(
+                        "{} shares in_progress with {}",
+                        transaction.id, transaction2.id
+                    );
+                    return true;
+                }
+            }
+        }
+
+        for id in transaction.id..next_transaction_id {
+            match transactions.get(&id) {
+                None => continue,
+                Some(t2) => {
+                    if t2.state == TransactionState::Committed && transaction.shares_writeset(t2) {
+                        println!("{} shares writeset with {}", transaction.id, t2.id);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
     fn is_visible(
         transaction: &Transaction,
         value: &Value,
@@ -135,7 +179,9 @@ impl Database {
 
                 return true;
             }
-            IsolationLevel::RepeatableRead => {
+            IsolationLevel::RepeatableRead
+            | IsolationLevel::Snapshot
+            | IsolationLevel::Serializable => {
                 if value.tx_start_id > transaction.id {
                     // created after transaction started
                     return false;
@@ -162,10 +208,11 @@ impl Database {
                 if value.tx_end_id > 0
                     && value.tx_end_id < transaction.id
                     && transactions.get(&value.tx_end_id).unwrap().state
-                    == TransactionState::Committed
-                    && !transaction.in_progress.contains(&value.tx_end_id) {
-                        return false;
-                    }
+                        == TransactionState::Committed
+                    && !transaction.in_progress.contains(&value.tx_end_id)
+                {
+                    return false;
+                }
 
                 return true;
             }

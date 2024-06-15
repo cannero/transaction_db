@@ -27,16 +27,24 @@ impl Connection {
                 Ok(format!("transaction {}", new_id))
             }
             "abort" => {
-                self.get_db()
+                let res = self
+                    .get_db()
                     .complete(self.transaction_id.unwrap(), TransactionState::Aborted);
                 self.transaction_id = None;
-                Ok("aborted".to_string())
+                match res {
+                    Ok(()) => Ok("aborted".to_string()),
+                    Err(err) => Err(err),
+                }
             }
             "commit" => {
-                self.get_db()
+                let res = self
+                    .get_db()
                     .complete(self.transaction_id.unwrap(), TransactionState::Committed);
                 self.transaction_id = None;
-                Ok("committed".to_string())
+                match res {
+                    Ok(()) => Ok("committed".to_string()),
+                    Err(err) => Err(err),
+                }
             }
             "get" => {
                 let key = args[0];
@@ -62,7 +70,7 @@ impl Connection {
 
     pub fn must_exec_command(&mut self, command: &str, args: &[&str]) -> String {
         self.exec_command(command, args)
-            .expect("command not possible")
+            .expect(format!("command '{}' not possible, args: {:?}", command, args).as_str())
     }
 
     fn get_db(&self) -> RefMut<Database> {

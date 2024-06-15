@@ -67,4 +67,8 @@ impl Transaction {
     pub fn writeset_insert(&mut self, key: String) {
         self.writeset.insert(key);
     }
+
+    pub(crate) fn shares_writeset(&self, transaction2: &Transaction) -> bool {
+        !self.writeset.is_disjoint(&transaction2.writeset)
+    }
 }
