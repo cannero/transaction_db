@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::types::{IsolationLevel, Transaction, TransactionState, Value};
 
+type ConflictFn = fn(&Transaction, &Transaction) -> bool;
+
 pub struct Database {
     default_isolation: IsolationLevel,
     store: HashMap<String, Vec<Value>>,
@@ -32,10 +34,17 @@ impl Database {
         if let Some(transaction) = self.transactions.get_mut(&transaction_id) {
             if state == TransactionState::Committed {
                 if transaction.isolation_level == IsolationLevel::Snapshot
-                    && Self::has_conflict(transaction, &trans2, self.next_transaction_id)
+                    && Self::has_conflict(transaction, &trans2, self.next_transaction_id, Self::shares_writeset)
                 {
                     transaction.set_state(TransactionState::Aborted);
                     return Err("write-write conflict".to_string());
+                }
+
+                if transaction.isolation_level == IsolationLevel::Serializable
+                    && Self::has_conflict(transaction, &trans2, self.next_transaction_id, |t1, t2| t1.shares_readwrite_or_writeread(t2))
+                {
+                    transaction.set_state(TransactionState::Aborted);
+                    return Err("read-write conflict".to_string());
                 }
             }
 
@@ -115,15 +124,20 @@ impl Database {
         }
     }
 
+    fn shares_writeset(t1: &Transaction, t2: &Transaction) -> bool {
+        t1.shares_writeset(t2)
+    }
+
     fn has_conflict(
         transaction: &Transaction,
         transactions: &BTreeMap<u64, Transaction>,
         next_transaction_id: u64,
+        conflict_fn: ConflictFn
     ) -> bool {
         for t_in_progress in &transaction.in_progress {
             let transaction2 = transactions.get(&t_in_progress).unwrap();
             if transaction2.state == TransactionState::Committed {
-                if transaction.shares_writeset(transaction2) {
+                if conflict_fn(transaction, transaction2){
                     println!(
                         "{} shares in_progress with {}",
                         transaction.id, transaction2.id
@@ -137,7 +151,7 @@ impl Database {
             match transactions.get(&id) {
                 None => continue,
                 Some(t2) => {
-                    if t2.state == TransactionState::Committed && transaction.shares_writeset(t2) {
+                    if t2.state == TransactionState::Committed && conflict_fn(transaction, t2) {
                         println!("{} shares writeset with {}", transaction.id, t2.id);
                         return true;
                     }
@@ -216,7 +230,6 @@ impl Database {
 
                 return true;
             }
-            _ => panic!("isolation level not implemented"),
         }
     }
 }

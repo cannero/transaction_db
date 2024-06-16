@@ -160,4 +160,24 @@ mod tests {
         con3.must_exec_command("set", &vec!["y", "no conflict"]);
         con3.must_exec_command("commit", &vec!["con3"]);
     }
+
+    #[test]
+    fn test_serialization_isolation_writewrite_conflict() {
+        let db = create_db(IsolationLevel::Serializable);
+        let mut con1 = create_open_con(&db);
+        let mut con2 = create_open_con(&db);
+        let mut con3 = create_open_con(&db);
+
+        con1.must_exec_command("set", &vec!["x", "hey"]);
+        con1.must_exec_command("commit", &vec!["con1"]);
+
+        assert!(con2.exec_command("get", &vec!["x"]).is_err());
+
+        let res = con2.exec_command("commit", &vec![]);
+        assert_eq!(res, Err("read-write conflict".to_string()));
+
+        // But unrelated keys cause no conflict.
+        con3.must_exec_command("set", &vec!["y", "no conflict"]);
+        con3.must_exec_command("commit", &vec!["con3"]);
+    }
 }

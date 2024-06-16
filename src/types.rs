@@ -71,4 +71,8 @@ impl Transaction {
     pub(crate) fn shares_writeset(&self, transaction2: &Transaction) -> bool {
         !self.writeset.is_disjoint(&transaction2.writeset)
     }
+
+    pub(crate) fn shares_readwrite_or_writeread(&self, transaction2: &Transaction) -> bool {
+        !self.writeset.is_disjoint(&transaction2.readset) || !self.readset.is_disjoint(&transaction2.writeset)
+    }
 }
